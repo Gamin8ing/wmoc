@@ -1,0 +1,6 @@
+{ 0001: these are multi line comments }
+{
+  how are these working for you?
+} .
+{ inline comments }
+{ EOP comment }

@@ -1,4 +1,3 @@
-#include <cmath>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -73,6 +72,8 @@ static unsigned long line = 1;
 char *buffer, *raw;
 char *token;
 char type;
+
+int depth; // nesting depth meter
 
 static void error(char *fmt, ...) {
   va_list args;
@@ -153,6 +154,7 @@ static int identifier() {
     token[i] = *ptemp++;
   }
   token[len] = '\0';
+  --raw;
 
   if (strcmp(token, "if") == 0) {
     return TK_IF;
@@ -190,19 +192,21 @@ static int number() {
     len++;
   }
 
-  if (*raw != ' ' && *raw != '\t' && *raw != '\n') {
-    error("Not a number");
-  }
+  // if (*raw != ' ' && *raw != '\t' && *raw != '\n' && *raw != ';') {
+  //   error("Not a number");
+  // }
 
   free(token);
   if ((token = malloc(len + 1)) == NULL) {
     error("Malloc failed");
   }
   for (int i = 0; i < len; i++) {
-    token[i] = *p++;
+    token[i] = *(p++);
   }
   token[len] = '\0';
 
+  --raw;
+  // printf("end of the number is %c\n", *raw);
   return TK_NUMBER;
 }
 
@@ -257,59 +261,227 @@ redo:
 }
 
 /* PARSER */
+// basically type is the current token and token is the current lexeme, yeah ik
+// and raw is the pointer to the string received from the file
+
+// next gives the next token
 static void next() {
   type = lex();
+  // printf("next token: %s %c\n", token, type);
   raw++;
 }
 
+// expect the next token as match
 static void expect(char match) {
   if (match != type) {
+    // printf("this is the error: %c %c \n", match, type);
     error("Syntax Error");
   }
   next();
 }
+/*
+expression	= [ "+" | "-" ] term { ( "+" | "-" ) term } .
+term		= factor { ( "*" | "/" ) factor } .
+factor		= ident
+                | number
+                | "(" expression ")" .
+ident		= "A-Za-z_" { "A-Za-z0-9_" } .
+number		= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" .
 
-static void parser() {
-  while ((type = lex()) != 0) {
-    raw++;
-    (void)fprintf(stdout, "%lu|%d\t", line, type);
+*/
+// prototype for expression functions
+static void expression();
+
+static void factor() {
+  if (type == TK_IDENTIFIER) {
+    next();
+  } else if (type == TK_NUMBER) {
+    next();
+  } else if (type == TK_LPAREN) {
+    expect(TK_LPAREN);
+    expression();
+    expect(TK_RPAREN);
+  }
+}
+static void term() {
+  factor();
+  while (type == TK_MULTIPLY || type == TK_DIVIDE) {
+    factor();
+  }
+}
+
+static void expression() {
+  if (type == TK_ADD || type == TK_MINUS) {
+    next();
+  }
+  printf("this is me %s %c\n", token, type);
+  term();
+  while (type == TK_ADD || type == TK_MINUS) {
+    next();
+    term();
+  }
+}
+
+// condition	= "odd" expression
+//                 | expression ( "=" | "#" | "<" | ">" ) expression .
+static void condition() {
+  if (type == TK_ODD) {
+    expect(TK_ODD);
+    expression();
+  } else {
+    expression();
     switch (type) {
-    case TK_IDENTIFIER:
-    case TK_NUMBER:
-    case TK_CONST:
-    case TK_VAR:
-    case TK_PROCEDURE:
-    case TK_CALL:
-    case TK_BEGIN:
-    case TK_END:
-    case TK_IF:
-    case TK_THEN:
-    case TK_WHILE:
-    case TK_DO:
-    case TK_ODD:
-      (void)fprintf(stdout, "%s", token);
-      break;
-    case TK_DOT:
     case TK_EQUAL:
-    case TK_COMMA:
-    case TK_SEMICOLON:
-    case TK_MINUS:
     case TK_NOTEQ:
     case TK_LESSER:
     case TK_GREATER:
-    case TK_ADD:
-    case TK_MULTIPLY:
-    case TK_DIVIDE:
-    case TK_LPAREN:
-    case TK_RPAREN:
-      (void)fputc(type, stdout);
+      next();
       break;
-    case TK_ASSIGN:
-      (void)fputs(":=", stdout);
+    default:
+      error("Invalid conditional");
     }
-    (void)fputc('\n', stdout);
+    expression();
   }
 }
+
+/*
+statement	= [ ident ":=" expression
+                  | "call" ident
+                  | "begin" statement { ";" statement } "end"
+                  | "if" condition "then" statement
+                  | "while" condition "do" statement ] .
+
+*/
+static void statement() {
+  if (type == TK_IDENTIFIER) {
+    expect(TK_IDENTIFIER);
+    expect(TK_ASSIGN);
+    expression();
+  } else if (type == TK_CALL) {
+    expect(TK_CALL);
+    expect(TK_IDENTIFIER);
+  } else if (type == TK_BEGIN) {
+    expect(TK_BEGIN);
+    statement();
+    while (type == TK_SEMICOLON) {
+      expect(TK_SEMICOLON);
+      statement();
+    }
+    expect(TK_END);
+  } else if (type == TK_IF) {
+    expect(TK_IF);
+    condition();
+    expect(TK_THEN);
+    statement();
+  } else if (type == TK_WHILE) {
+    expect(TK_WHILE);
+    condition();
+    expect(TK_DO);
+    statement();
+  }
+}
+
+// for processing the blocks in the language
+static void block() {
+
+  if (++depth > 2) {
+    error("Nesting depth increased");
+  }
+  // checking for const lines
+  if (type == TK_CONST) {
+    expect(TK_CONST);
+    expect(TK_IDENTIFIER);
+    expect(TK_EQUAL);
+    expect(TK_NUMBER);
+    while (type == TK_COMMA) {
+      expect(TK_COMMA);
+      expect(TK_IDENTIFIER);
+      expect(TK_EQUAL);
+      expect(TK_NUMBER);
+    }
+    expect(TK_SEMICOLON);
+  }
+
+  // now var lines
+  if (type == TK_VAR) {
+    expect(TK_VAR);
+    expect(TK_IDENTIFIER);
+    while (type == TK_COMMA) {
+      expect(TK_COMMA);
+      expect(TK_IDENTIFIER);
+    }
+    expect(TK_SEMICOLON);
+  }
+
+  while (type == TK_PROCEDURE) {
+    expect(TK_PROCEDURE);
+    expect(TK_IDENTIFIER);
+    expect(TK_SEMICOLON);
+    block();
+    expect(TK_SEMICOLON);
+  }
+
+  statement();
+
+  if (--depth < 0) {
+    error("nesting depth fell below 0, huh?");
+  }
+  // expect(TK_DOT);
+}
+
+static void parse(void) {
+  // first enforcing the block . rule in the program
+  next();
+  block();
+  // printf("this is the last token %s\n", token);
+  expect(TK_DOT);
+
+  if (type != '\0') {
+    printf("Extra tokens present at the end of the file\n");
+  }
+}
+
+// static void parser() {
+//   while ((type = lex()) != 0) {
+//     raw++;
+//     (void)fprintf(stdout, "%lu|%d\t", line, type);
+//     switch (type) {
+//     case TK_IDENTIFIER:
+//     case TK_NUMBER:
+//     case TK_CONST:
+//     case TK_VAR:
+//     case TK_PROCEDURE:
+//     case TK_CALL:
+//     case TK_BEGIN:
+//     case TK_END:
+//     case TK_IF:
+//     case TK_THEN:
+//     case TK_WHILE:
+//     case TK_DO:
+//     case TK_ODD:
+//       (void)fprintf(stdout, "%s", token);
+//       break;
+//     case TK_DOT:
+//     case TK_EQUAL:
+//     case TK_COMMA:
+//     case TK_SEMICOLON:
+//     case TK_MINUS:
+//     case TK_NOTEQ:
+//     case TK_LESSER:
+//     case TK_GREATER:
+//     case TK_ADD:
+//     case TK_MULTIPLY:
+//     case TK_DIVIDE:
+//     case TK_LPAREN:
+//     case TK_RPAREN:
+//       (void)fputc(type, stdout);
+//       break;
+//     case TK_ASSIGN:
+//       (void)fputs(":=", stdout);
+//     }
+//     (void)fputc('\n', stdout);
+//   }
+// }
 
 /*
  * MAIN FUNC
@@ -326,7 +498,7 @@ int main(int argc, char **argv) {
   readin(argv[1]);
   startpt = buffer;
 
-  parser();
+  parse();
 
   free(startpt);
   return 0;
