@@ -206,7 +206,7 @@ static int number() {
   token[len] = '\0';
 
   --raw;
-  // printf("end of the number is %c\n", *raw);
+  printf("end of the number is %c\n", *raw);
   return TK_NUMBER;
 }
 
@@ -293,6 +293,8 @@ number		= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" .
 static void expression();
 
 static void factor() {
+  // printf("a factor\n");
+  // getchar();
   if (type == TK_IDENTIFIER) {
     next();
   } else if (type == TK_NUMBER) {
@@ -304,17 +306,20 @@ static void factor() {
   }
 }
 static void term() {
+  // printf("a term\n");
   factor();
   while (type == TK_MULTIPLY || type == TK_DIVIDE) {
+    next();
     factor();
   }
 }
 
 static void expression() {
+  // printf("this is expression\n");
   if (type == TK_ADD || type == TK_MINUS) {
     next();
   }
-  printf("this is me %s %c\n", token, type);
+  // printf("this is me %s %c\n", token, type);
   term();
   while (type == TK_ADD || type == TK_MINUS) {
     next();
@@ -325,6 +330,7 @@ static void expression() {
 // condition	= "odd" expression
 //                 | expression ( "=" | "#" | "<" | ">" ) expression .
 static void condition() {
+  // printf("this is a condition\n");
   if (type == TK_ODD) {
     expect(TK_ODD);
     expression();
@@ -353,6 +359,7 @@ statement	= [ ident ":=" expression
 
 */
 static void statement() {
+  // printf("this is a statement\n");
   if (type == TK_IDENTIFIER) {
     expect(TK_IDENTIFIER);
     expect(TK_ASSIGN);
@@ -383,6 +390,7 @@ static void statement() {
 
 // for processing the blocks in the language
 static void block() {
+  // printf("this is a block \n");
 
   if (++depth > 2) {
     error("Nesting depth increased");
