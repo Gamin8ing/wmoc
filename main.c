@@ -64,6 +64,8 @@ number		= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" .
 #define TK_LPAREN '('
 #define TK_RPAREN ')'
 
+#define WMOC_VERSION "1.0.0"
+
 /*
  * MISC functions
  */
@@ -123,6 +125,87 @@ static void readin(char *filename) {
   raw = buffer;
 
   close(fd);
+}
+
+/*
+ * SYMBOL TABLE
+ */
+
+struct SymbolTable {
+  int depth;
+  char *name;
+  int type;
+  struct SymbolTable *next;
+};
+
+static struct SymbolTable *head;
+
+static struct SymbolTable *createsymb() {
+  struct SymbolTable *new;
+  if ((new = (struct SymbolTable *)malloc(sizeof(struct SymbolTable))) ==
+      NULL) {
+    error("malloc failed");
+  }
+  new->next = NULL;
+
+  return new;
+}
+
+static void initsymbtab(void) {
+  struct SymbolTable *new = createsymb();
+
+  new->type = TK_PROCEDURE;
+  new->depth = 0;
+  new->name = "main";
+
+  head = new;
+}
+
+static void addsymb(int type) {
+  struct SymbolTable *new = createsymb();
+
+  struct SymbolTable *curr = head;
+  while (curr->next != NULL) {
+    if (curr->type == type) {
+
+      if (strcmp(curr->name, token) == 0) {
+        if (curr->depth == depth - 1) {
+
+          error("Duplicate symbols");
+        }
+      }
+    }
+    curr = curr->next;
+  }
+
+  // NOTE: we do depth-1 bec we increment the depth level immediately after the
+  // check to make sure we don't have nested procedures and so the depth
+  // variable is always one level higher than we're currently at
+
+  new->type = type;
+  new->depth = depth - 1;
+  if ((new->name = strdup(token)) == NULL) {
+    error("Malloc failed");
+  }
+
+  curr->next = new;
+}
+
+static void destsymb(void) {
+  struct SymbolTable *curr, *prev;
+again:
+  curr = head;
+  while (curr->next != NULL) {
+    prev = curr;
+    curr = curr->next;
+  }
+
+  if (curr->type != TK_PROCEDURE) {
+    free(curr->name);
+    free(curr);
+    prev->next = NULL;
+    goto again;
+  }
 }
 
 /* LEXER */
@@ -206,7 +289,7 @@ static int number() {
   token[len] = '\0';
 
   --raw;
-  printf("end of the number is %c\n", *raw);
+  // printf("end of the number is %c\n", *raw);
   return TK_NUMBER;
 }
 
@@ -260,6 +343,89 @@ redo:
   return 0;
 }
 
+/*
+ * Code Generator
+ */
+
+static void aout(const char *fmt, ...) {
+  va_list ap;
+
+  va_start(ap, fmt);
+  (void)vfprintf(stdout, fmt, ap);
+  va_end(ap);
+}
+
+static void cg_end(void) {
+  aout("/* PL/0 Compiler WMOC v%s */\n", WMOC_VERSION);
+}
+
+static void cg_const(void) { aout("const long %s=", token); }
+
+static void cg_symb(void) {
+  switch (type) {
+  case TK_IDENTIFIER:
+  case TK_NUMBER:
+    aout("%s", token);
+    break;
+  case TK_DIVIDE:
+    aout("/");
+    break;
+  case TK_MULTIPLY:
+    aout("*");
+    break;
+  case TK_ADD:
+    aout("+");
+    break;
+  case TK_MINUS:
+    aout("-");
+    break;
+  case TK_BEGIN:
+    aout("{\n");
+    break;
+  case TK_END:
+    aout(";\n}\n");
+    break;
+  case TK_IF:
+    aout("if(");
+    break;
+  case TK_THEN:
+  case TK_DO:
+    aout(")");
+    break;
+  case TK_ODD:
+    aout("(");
+    break;
+  case TK_WHILE:
+    aout("while(");
+    break;
+  case TK_EQUAL:
+    aout("==");
+    break;
+  case TK_COMMA:
+    aout(",");
+    break;
+  case TK_ASSIGN:
+    aout("=");
+    break;
+  case TK_NOTEQ:
+    aout("!=");
+    break;
+  case TK_LESSER:
+    aout("<");
+    break;
+  case TK_GREATER:
+    aout(">");
+    break;
+  case TK_LPAREN:
+    aout("(");
+    break;
+  case TK_RPAREN:
+    aout(")");
+  }
+}
+
+static void cg_semicolon(void) { aout(";\n"); }
+
 /* PARSER */
 // basically type is the current token and token is the current lexeme, yeah ik
 // and raw is the pointer to the string received from the file
@@ -279,22 +445,10 @@ static void expect(char match) {
   }
   next();
 }
-/*
-expression	= [ "+" | "-" ] term { ( "+" | "-" ) term } .
-term		= factor { ( "*" | "/" ) factor } .
-factor		= ident
-                | number
-                | "(" expression ")" .
-ident		= "A-Za-z_" { "A-Za-z0-9_" } .
-number		= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" .
 
-*/
-// prototype for expression functions
 static void expression();
 
 static void factor() {
-  // printf("a factor\n");
-  // getchar();
   if (type == TK_IDENTIFIER) {
     next();
   } else if (type == TK_NUMBER) {
@@ -305,6 +459,7 @@ static void factor() {
     expect(TK_RPAREN);
   }
 }
+
 static void term() {
   // printf("a term\n");
   factor();
@@ -327,8 +482,6 @@ static void expression() {
   }
 }
 
-// condition	= "odd" expression
-//                 | expression ( "=" | "#" | "<" | ">" ) expression .
 static void condition() {
   // printf("this is a condition\n");
   if (type == TK_ODD) {
@@ -350,14 +503,6 @@ static void condition() {
   }
 }
 
-/*
-statement	= [ ident ":=" expression
-                  | "call" ident
-                  | "begin" statement { ";" statement } "end"
-                  | "if" condition "then" statement
-                  | "while" condition "do" statement ] .
-
-*/
 static void statement() {
   // printf("this is a statement\n");
   if (type == TK_IDENTIFIER) {
@@ -398,13 +543,29 @@ static void block() {
   // checking for const lines
   if (type == TK_CONST) {
     expect(TK_CONST);
+    if (type == TK_IDENTIFIER) {
+      addsymb(TK_CONST);
+      cg_const();
+    }
     expect(TK_IDENTIFIER);
     expect(TK_EQUAL);
+    if (type == TK_NUMBER) {
+      cg_symb();
+      cg_semicolon();
+    }
     expect(TK_NUMBER);
     while (type == TK_COMMA) {
       expect(TK_COMMA);
+      if (type == TK_IDENTIFIER) {
+        addsymb(TK_CONST);
+        cg_const();
+      }
       expect(TK_IDENTIFIER);
       expect(TK_EQUAL);
+      if (type == TK_NUMBER) {
+        cg_symb();
+        cg_semicolon();
+      }
       expect(TK_NUMBER);
     }
     expect(TK_SEMICOLON);
@@ -447,49 +608,9 @@ static void parse(void) {
   if (type != '\0') {
     printf("Extra tokens present at the end of the file\n");
   }
-}
 
-// static void parser() {
-//   while ((type = lex()) != 0) {
-//     raw++;
-//     (void)fprintf(stdout, "%lu|%d\t", line, type);
-//     switch (type) {
-//     case TK_IDENTIFIER:
-//     case TK_NUMBER:
-//     case TK_CONST:
-//     case TK_VAR:
-//     case TK_PROCEDURE:
-//     case TK_CALL:
-//     case TK_BEGIN:
-//     case TK_END:
-//     case TK_IF:
-//     case TK_THEN:
-//     case TK_WHILE:
-//     case TK_DO:
-//     case TK_ODD:
-//       (void)fprintf(stdout, "%s", token);
-//       break;
-//     case TK_DOT:
-//     case TK_EQUAL:
-//     case TK_COMMA:
-//     case TK_SEMICOLON:
-//     case TK_MINUS:
-//     case TK_NOTEQ:
-//     case TK_LESSER:
-//     case TK_GREATER:
-//     case TK_ADD:
-//     case TK_MULTIPLY:
-//     case TK_DIVIDE:
-//     case TK_LPAREN:
-//     case TK_RPAREN:
-//       (void)fputc(type, stdout);
-//       break;
-//     case TK_ASSIGN:
-//       (void)fputs(":=", stdout);
-//     }
-//     (void)fputc('\n', stdout);
-//   }
-// }
+  cg_end();
+}
 
 /*
  * MAIN FUNC
