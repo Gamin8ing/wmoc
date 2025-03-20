@@ -1,0 +1,7 @@
+
+{ 0120: invalid identifier => should fail }
+var 2x;
+
+begin
+    2x := 10;
+end.

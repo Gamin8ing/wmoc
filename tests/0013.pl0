@@ -1,0 +1,8 @@
+const y = 23;
+var x;
+
+procedure hello ; begin
+  x := 23;
+end ;
+
+.

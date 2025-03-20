@@ -1,0 +1,9 @@
+{ 0006: constant and variable sections }
+const one = 1, two = 2;
+var a, b;
+
+begin
+    a := one;
+    b := two;
+end.
+

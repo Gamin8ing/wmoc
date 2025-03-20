@@ -1,0 +1,8 @@
+{ 0010: arithmetic }
+var x, y;
+
+begin
+    x := 10;
+    y := x + ((x - x) * x) / x;
+end.
+

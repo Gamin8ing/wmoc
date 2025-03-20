@@ -1,0 +1,22 @@
+
+{ 0030: nested procedures }
+const limit = 3;
+var i;
+
+procedure outer;
+var x;
+    procedure inner;
+    begin
+        x := x + 1;
+    end;
+
+begin
+    x := 0;
+    while x < limit do
+        call inner
+end;
+
+begin
+    i := 42;
+    call outer;
+end.

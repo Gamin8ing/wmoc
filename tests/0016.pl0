@@ -1,0 +1,17 @@
+
+{ 0020: procedures, if, while }
+const threshold = 5;
+var count;
+
+procedure increment;
+begin
+    count := count + 1
+end;
+
+begin
+    count := 0;
+    while count < threshold do
+    begin
+        call increment;
+    end
+end.
