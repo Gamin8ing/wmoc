@@ -91,6 +91,8 @@ char type;
 int proc;  // to check if the curr procedure is int main in c or not
 int depth; // nesting depth meter
 
+FILE *output;
+
 static void error(char *fmt, ...) {
   va_list args;
 
@@ -427,7 +429,7 @@ static void aout(const char *fmt, ...) {
   va_list ap;
 
   va_start(ap, fmt);
-  (void)vfprintf(stdout, fmt, ap);
+  (void)vfprintf(output, fmt, ap);
   va_end(ap);
 }
 
@@ -853,6 +855,8 @@ int main(int argc, char **argv) {
   readin(argv[1]);
   startpt = buffer;
 
+  // opening the output file
+  output = fopen(argv[2], "w");
   initsymbtab();
 
   parse();
