@@ -79,6 +79,6 @@ gcc example.c -o example && ./example
 ```
 
 ## Issues
-To report bugs or request features, please open an issue using our issue template mentioned in [CONTRIBUTION.md](). We appreciate feedback and contributions! 
+To report bugs or request features, please open an issue using our issue template mentioned in [CONTRIBUTION.md](https://github.com/Gamin8ing/wmoc/blob/v1.0.0/CONTRIBUTION.md). We appreciate feedback and contributions! 
 
 
