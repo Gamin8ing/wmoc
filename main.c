@@ -66,6 +66,10 @@ number		= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" .
 
 #define WMOC_VERSION "1.0.0"
 
+#define CHECK_LHS 0
+#define CHECK_RHS 1
+#define CHECK_CALL 2
+
 /*
  * MISC functions
  */
@@ -75,6 +79,7 @@ char *buffer, *raw;
 char *token;
 char type;
 
+int proc;  // to check if the curr procedure is int main in c or not
 int depth; // nesting depth meter
 
 static void error(char *fmt, ...) {
@@ -88,6 +93,7 @@ static void error(char *fmt, ...) {
   va_end(args);
 
   fputc('\n', stderr);
+  ERESET;
 
   exit(1);
 }
@@ -164,13 +170,16 @@ static void initsymbtab(void) {
 static void addsymb(int type) {
   struct SymbolTable *new = createsymb();
 
-  struct SymbolTable *curr = head;
-  while (curr->next != NULL) {
-    if (curr->type == type) {
+  struct SymbolTable *curr;
+  // printf("adsymbols called with %s %c\n", token, type);
 
+  curr = head;
+  // printf("this is the pointer %p\n", curr);
+  while (curr->next != NULL) {
+    // printf("> %s %c\n", curr->name, curr->type);
+    if (curr->type == type) {
       if (strcmp(curr->name, token) == 0) {
         if (curr->depth == depth - 1) {
-
           error("Duplicate symbols");
         }
       }
@@ -208,7 +217,55 @@ again:
   }
 }
 
-/* LEXER */
+/*
+ * SEMANTICS
+ */
+static void symcheck(int check) {
+  struct SymbolTable *curr, *found = NULL;
+
+  // curr = head;
+  // while (curr != NULL) {
+  //   printf(">> %s %c\n", curr->name, curr->type);
+  //   curr = curr->next;
+  // }
+  curr = head;
+
+  // printf("SYMCHECK called %s ", token);
+  while (curr != NULL) {
+    if (strcmp(curr->name, token) == 0) {
+      found = curr;
+    }
+    // printf("> %s: %s %c\n", token, curr->name, curr->type);
+    curr = curr->next;
+  }
+  if (found == NULL) {
+    error("Identifier %s not found", token);
+  }
+  // printf("%s %c \n", found->name, found->type);
+
+  switch (check) {
+  case CHECK_LHS:
+    if (found->type != TK_VAR) {
+      // printf("%s %c -< \n", found->name, found->type);
+      error("Can only assign to type var: %s", token);
+    }
+    break;
+  case CHECK_RHS:
+    if (found->type == TK_PROCEDURE) {
+      error("must not be a procedure: %s", token);
+    }
+    break;
+  case CHECK_CALL:
+    if (found->type != TK_PROCEDURE) {
+      error("can only call a procedure: %s", token);
+    }
+    break;
+  }
+}
+
+/*
+ * LEXER
+ */
 void comment() {
   char ch;
   while ((ch = *raw++) != '}') {
@@ -426,6 +483,31 @@ static void cg_symb(void) {
 
 static void cg_semicolon(void) { aout(";\n"); }
 
+static void cg_var(void) { aout("long %s;\n", token); }
+
+static void cg_nl(void) { aout("\n"); }
+
+static void cg_procedure(void) {
+  if (proc == 0) {
+    aout("int main(int argc, char **argv) ");
+  } else {
+    aout("void %s() ", token);
+  }
+  aout("{\n");
+}
+
+static void cg_epilogue(void) {
+  aout(";\n");
+  if (proc == 0) {
+    aout("return 0;");
+  }
+  aout("\n}\n\n");
+}
+
+static void cg_call(void) { aout("%s();\n"); }
+
+static void cg_odd(void) { aout(") & 1"); }
+
 /* PARSER */
 // basically type is the current token and token is the current lexeme, yeah ik
 // and raw is the pointer to the string received from the file
@@ -450,12 +532,19 @@ static void expression();
 
 static void factor() {
   if (type == TK_IDENTIFIER) {
+    symcheck(CHECK_RHS);
+    cg_symb();
     next();
   } else if (type == TK_NUMBER) {
+    cg_symb();
     next();
   } else if (type == TK_LPAREN) {
+    cg_symb();
     expect(TK_LPAREN);
     expression();
+    if (type == TK_RPAREN) {
+      cg_symb();
+    }
     expect(TK_RPAREN);
   }
 }
@@ -464,6 +553,7 @@ static void term() {
   // printf("a term\n");
   factor();
   while (type == TK_MULTIPLY || type == TK_DIVIDE) {
+    cg_symb();
     next();
     factor();
   }
@@ -472,11 +562,13 @@ static void term() {
 static void expression() {
   // printf("this is expression\n");
   if (type == TK_ADD || type == TK_MINUS) {
+    cg_symb();
     next();
   }
   // printf("this is me %s %c\n", token, type);
   term();
   while (type == TK_ADD || type == TK_MINUS) {
+    cg_symb();
     next();
     term();
   }
@@ -485,8 +577,10 @@ static void expression() {
 static void condition() {
   // printf("this is a condition\n");
   if (type == TK_ODD) {
+    cg_symb();
     expect(TK_ODD);
     expression();
+    cg_odd();
   } else {
     expression();
     switch (type) {
@@ -494,6 +588,7 @@ static void condition() {
     case TK_NOTEQ:
     case TK_LESSER:
     case TK_GREATER:
+      cg_symb();
       next();
       break;
     default:
@@ -506,28 +601,50 @@ static void condition() {
 static void statement() {
   // printf("this is a statement\n");
   if (type == TK_IDENTIFIER) {
+    symcheck(CHECK_LHS);
+    cg_symb();
     expect(TK_IDENTIFIER);
+    if (type == TK_ASSIGN)
+      cg_symb();
     expect(TK_ASSIGN);
     expression();
   } else if (type == TK_CALL) {
     expect(TK_CALL);
+    if (type == TK_IDENTIFIER) {
+      symcheck(CHECK_CALL);
+      cg_call();
+    }
+
     expect(TK_IDENTIFIER);
   } else if (type == TK_BEGIN) {
+    cg_symb();
     expect(TK_BEGIN);
     statement();
     while (type == TK_SEMICOLON) {
+      cg_semicolon();
       expect(TK_SEMICOLON);
       statement();
     }
+    if (type == TK_END) {
+      cg_symb();
+    }
     expect(TK_END);
   } else if (type == TK_IF) {
+    cg_symb();
     expect(TK_IF);
     condition();
+    if (type == TK_THEN) {
+      cg_symb();
+    }
     expect(TK_THEN);
     statement();
   } else if (type == TK_WHILE) {
+    cg_symb();
     expect(TK_WHILE);
     condition();
+    if (type == TK_DO) {
+      cg_symb();
+    }
     expect(TK_DO);
     statement();
   }
@@ -537,7 +654,7 @@ static void statement() {
 static void block() {
   // printf("this is a block \n");
 
-  if (++depth > 2) {
+  if (depth++ > 3) {
     error("Nesting depth increased");
   }
   // checking for const lines
@@ -574,23 +691,43 @@ static void block() {
   // now var lines
   if (type == TK_VAR) {
     expect(TK_VAR);
+    if (type == TK_IDENTIFIER) {
+      addsymb(TK_VAR);
+      cg_var();
+    }
     expect(TK_IDENTIFIER);
     while (type == TK_COMMA) {
       expect(TK_COMMA);
+      if (type == TK_IDENTIFIER) {
+        addsymb(TK_VAR);
+        cg_var();
+      }
       expect(TK_IDENTIFIER);
     }
     expect(TK_SEMICOLON);
+    cg_nl();
   }
 
   while (type == TK_PROCEDURE) {
+    proc = 1;
     expect(TK_PROCEDURE);
+    if (type == TK_IDENTIFIER) {
+      addsymb(TK_PROCEDURE);
+      cg_procedure();
+    }
     expect(TK_IDENTIFIER);
     expect(TK_SEMICOLON);
     block();
     expect(TK_SEMICOLON);
+    proc = 0;
+    destsymb();
+  }
+  if (proc == 0) {
+    cg_procedure();
   }
 
   statement();
+  cg_epilogue();
 
   if (--depth < 0) {
     error("nesting depth fell below 0, huh?");
@@ -626,6 +763,8 @@ int main(int argc, char **argv) {
   // opening the file
   readin(argv[1]);
   startpt = buffer;
+
+  initsymbtab();
 
   parse();
 
