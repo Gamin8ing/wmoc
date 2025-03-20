@@ -23,6 +23,9 @@ statement	= [ ident ":=" expression
                   | "begin" statement { ";" statement } "end"
                   | "if" condition "then" statement
                   | "while" condition "do" statement ] .
+                  | "printInt" ident
+                  | "printChar" into ident
+                  | "readInt" into ident
 condition	= "odd" expression
                 | expression ( "=" | "#" | "<" | ">" ) expression .
 expression	= [ "+" | "-" ] term { ( "+" | "-" ) term } .
@@ -63,6 +66,12 @@ number		= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" .
 #define TK_ASSIGN ':' // :=
 #define TK_LPAREN '('
 #define TK_RPAREN ')'
+// I/O tokens
+#define TK_PRINTINT 'p'
+#define TK_PRINTCHAR 'H'
+#define TK_READINT 'R'
+#define TK_READCHAR 'h'
+#define TK_INTO 'n'
 
 #define WMOC_VERSION "1.0.0"
 
@@ -318,6 +327,16 @@ static int identifier() {
     return TK_BEGIN;
   } else if (strcmp(token, "end") == 0) {
     return TK_END;
+  } else if (strcmp(token, "printInt") == 0) {
+    return TK_PRINTINT;
+  } else if (strcmp(token, "printChar") == 0) {
+    return TK_PRINTCHAR;
+  } else if (strcmp(token, "readInt") == 0) {
+    return TK_READINT;
+  } else if (strcmp(token, "readChar") == 0) {
+    return TK_READCHAR;
+  } else if (strcmp(token, "into") == 0) {
+    return TK_INTO;
   } else {
     return TK_IDENTIFIER;
   }
@@ -508,6 +527,29 @@ static void cg_call(void) { aout("%s();\n"); }
 
 static void cg_odd(void) { aout(") & 1"); }
 
+static void cg_printchar(void) {
+  aout("(void) fprintf(stdout, \"%%c\", (unsigned char) %s);", token);
+}
+
+static void cg_printint(void) {
+  aout("(void) fprintf(stdout, \"%%ld\\n\", (long) %s);\n", token);
+}
+
+static void cg_init(void) {
+  aout("#include <stdio.h>\n");
+  aout("static char __stdin[24];\n\n");
+}
+
+static void cg_readchar(void) {
+  aout("(void) fprintf(stdout, \"> \";");
+  aout("%s = (unsigned char) fgetc(stdin);", token);
+}
+
+static void cg_readint(void) {
+  aout("(void) fprintf(stdout, \"> \";");
+  aout("(void) fscanf(stdin, \"%%ld\", %s)", token);
+}
+
 /* PARSER */
 // basically type is the current token and token is the current lexeme, yeah ik
 // and raw is the pointer to the string received from the file
@@ -647,6 +689,52 @@ static void statement() {
     }
     expect(TK_DO);
     statement();
+  } else if (type == TK_PRINTINT) {
+    expect(TK_PRINTINT);
+    if (type == TK_IDENTIFIER || type == TK_NUMBER) {
+      if (type == TK_IDENTIFIER) {
+        symcheck(CHECK_RHS);
+      }
+      cg_printint();
+    }
+    if (type == TK_IDENTIFIER) {
+      expect(TK_IDENTIFIER);
+    } else if (type == TK_NUMBER) {
+      expect(TK_NUMBER);
+    } else {
+      error("Expected an identifier or a number");
+    }
+  } else if (type == TK_PRINTCHAR) {
+    expect(TK_PRINTCHAR);
+    if (type == TK_IDENTIFIER || type == TK_NUMBER) {
+      if (type == TK_IDENTIFIER) {
+        symcheck(CHECK_RHS);
+      }
+      cg_printchar();
+    }
+    if (type == TK_IDENTIFIER) {
+      expect(TK_IDENTIFIER);
+    } else if (type == TK_NUMBER) {
+      expect(TK_NUMBER);
+    } else {
+      error("Expected an identifier or a number");
+    }
+  } else if (type == TK_READINT) {
+    expect(TK_READINT);
+    expect(TK_INTO);
+    if (type == TK_IDENTIFIER) {
+      symcheck(CHECK_LHS);
+      cg_readint();
+    }
+    expect(TK_IDENTIFIER);
+  } else if (type == TK_READCHAR) {
+    expect(TK_READCHAR);
+    expect(TK_INTO);
+    if (type == TK_IDENTIFIER) {
+      symcheck(CHECK_LHS);
+      cg_readchar();
+    }
+    expect(TK_IDENTIFIER);
   }
 }
 
@@ -737,6 +825,7 @@ static void block() {
 
 static void parse(void) {
   // first enforcing the block . rule in the program
+  cg_init();
   next();
   block();
   // printf("this is the last token %s\n", token);

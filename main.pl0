@@ -1,7 +1,35 @@
-_hllo_this_new worly
-hello world
-if 
-{ this will not vbe considererd
-( ) 
-.,..,.,;;.*()
-hello again this visible or notkjhsgdfkjhgsafkjhagsf
+procedure hello;
+  var i, x;
+begin
+  i := 0;
+  x := 72;
+  printChar x;
+  x := x + 29;
+  printChar x;
+  x := x + 7;
+  while i < 2 do
+  begin
+    printChar x;
+    i := i + 1
+  end;
+  x := x + 3;
+  printChar x;
+  printChar 44;
+  printChar 32;
+  x := x + 8;
+  printChar x;
+  x := x - 8;
+  printChar x;
+  x := x + 3;
+  printChar x;
+  x := x - (3 * 2);
+  printChar x;
+  x := x - 8;
+  printChar x;
+  x := x / 3;
+  printChar x;
+  printChar 10
+end;
+
+call hello
+.
