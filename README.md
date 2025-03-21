@@ -1,5 +1,5 @@
 # WMOC - Writing My Own Compiler
-**WMOC** is a learning project about compiler design and construction. It’s based on **PL/0**, formulated by [Niklaus Wirth](https://en.wikipedia.org/wiki/Niklaus_Wirth) as a minimal educational language.
+**WMOC** is a learning project about compiler design and construction. It’s based on **PL/0**, formulated by [Niklaus Wirth](https://en.wikipedia.org/wiki/Niklaus_Wirth) as a minimal educational language. Followed from the brilliant [blog series](https://briancallahan.net/blog/20210814.html) written by Brian Callahen.
 
 ### PL/0
 PL/0 (or pl0) is an "educational programming language" as stated by [Rosetta Code](https://rosettacode.org/wiki/Category:PL/0). The syntax rule of the language can be represented in the EBNF form as:
